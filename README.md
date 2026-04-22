@@ -8,6 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
+![fake-rtsp-logo](https://raw.githubusercontent.com/Tlaloc-Es/fake-rtsp/master/logo.png)
+---
 
 ```
 rtsp://localhost:8554/stream  ←  your video, looping forever, live in 30 seconds
