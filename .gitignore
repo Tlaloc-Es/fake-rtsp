@@ -1,0 +1,13 @@
+# Video files — mount these via Docker volumes, never commit them
+#*.mp4
+*.mkv
+*.avi
+*.mov
+*.ts
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Keep the videos directory placeholder
+!videos/.gitkeep

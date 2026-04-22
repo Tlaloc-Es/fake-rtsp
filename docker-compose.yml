@@ -1,0 +1,23 @@
+services:
+  camera1:
+    build: .
+    image: fake-rtsp
+    ports:
+      - "8554:8554"
+    volumes:
+      - ./videos:/videos:ro
+    environment:
+      VIDEO_PATH: /videos/parking.mp4
+      STREAM_NAME: camera1
+    restart: unless-stopped
+
+  camera2:
+    image: fake-rtsp
+    ports:
+      - "8555:8554"
+    volumes:
+      - ./videos:/videos:ro
+    environment:
+      VIDEO_PATH: /videos/entrance.mp4
+      STREAM_NAME: camera2
+    restart: unless-stopped

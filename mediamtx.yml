@@ -1,0 +1,22 @@
+###############################################
+# mediamtx configuration for fake-rtsp
+###############################################
+
+# Log level: info | warn | error
+logLevel: warn
+
+# RTSP server settings
+rtsp: yes
+rtspAddress: :8554
+
+# Disable unused protocols to keep the container lean
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+
+# Allow any source to publish (ffmpeg on localhost)
+# and any client to read
+paths:
+  all:
+    source: publisher
