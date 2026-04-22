@@ -4,7 +4,7 @@
 > Spin up a fleet of fake RTSP camera streams in seconds — perfect for NVRs, VMS, computer vision pipelines, and any RTSP-based app.
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/Tlaloc-Es/fake-rtsp?logo=docker&color=0db7ed)](https://hub.docker.com/r/Tlaloc-Es/fake-rtsp)
-[![GitHub Stars](https://img.shields.io/github/stars/Tlaloc-Es/fake_rtsp?style=social)](https://github.com/Tlaloc-Es/fake_rtsp)
+[![GitHub Stars](https://img.shields.io/github/stars/Tlaloc-Es/fake_rtsp?style=social)](https://github.com/Tlaloc-Es/fake-rtsp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
