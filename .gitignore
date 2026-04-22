@@ -1,5 +1,5 @@
 # Video files — mount these via Docker volumes, never commit them
-#*.mp4
+*.mp4
 *.mkv
 *.avi
 *.mov
