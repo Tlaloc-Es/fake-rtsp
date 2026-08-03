@@ -1,0 +1,25 @@
+# Keep the build context tiny — videos are mounted at runtime, never baked in
+videos/
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.ts
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Docs and assets are not needed inside the image
+docs/
+*.png
+*.webp
+*.gif
+*.md
+LICENSE
+
+# Repo metadata
+.git/
+.github/
+.gitignore
+docker-compose.yml
