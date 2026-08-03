@@ -240,7 +240,7 @@ shared RTSP server. fake-rtsp packages the whole thing as a single image instead
 | Containers per camera | 1 | 2 (RTSP server + ffmpeg) | 2 |
 | Configuration surface | environment variables | edit `docker-compose.yml` | edit `docker-compose.yml` |
 | Built-in container healthcheck | ✅ | ❌ | ❌ |
-| Concatenate several files into one stream | ❌ (on the roadmap) | ✅ | ✅ |
+| Concatenate several files into one stream | ❌ ([#5](https://github.com/Tlaloc-Es/fake-rtsp/issues/5)) | ✅ | ✅ |
 
 If you need the concatenation behaviour today, those projects do it and fake-rtsp
 does not yet.
@@ -249,12 +249,13 @@ does not yet.
 
 ## Roadmap
 
-- ONVIF device emulation (WS-Discovery + media profiles), so an NVR discovers the stream like real hardware
-- Fault injection: drop the stream, stall it, add jitter, so clients can be tested against failures
-- RTSP authentication exposed as environment variables
-- Concatenating several files into a single continuous stream
+- [ONVIF device emulation](https://github.com/Tlaloc-Es/fake-rtsp/issues/1) (WS-Discovery + media profiles), so an NVR discovers the stream like real hardware
+- [Fault injection](https://github.com/Tlaloc-Es/fake-rtsp/issues/2): drop the stream, stall it, add jitter, so clients can be tested against failures
+- [RTSP authentication](https://github.com/Tlaloc-Es/fake-rtsp/issues/3) exposed as environment variables
+- [Several streams from one container](https://github.com/Tlaloc-Es/fake-rtsp/issues/4), instead of one container per camera
+- [Concatenating several files](https://github.com/Tlaloc-Es/fake-rtsp/issues/5) into a single continuous stream
 
-Ideas and pull requests welcome — see the [open issues](https://github.com/Tlaloc-Es/fake-rtsp/issues).
+Ideas and pull requests welcome — there are [good first issues](https://github.com/Tlaloc-Es/fake-rtsp/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) open too.
 
 ---
 
