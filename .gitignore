@@ -9,5 +9,8 @@
 *.wmv
 *.m4v
 
-# Keep the videos directory placeholder
+# Keep the videos directory placeholder and the two sample clips that make
+# `docker compose up` work straight after a clone
 !videos/.gitkeep
+!videos/parking.mp4
+!videos/entrance.mp4
