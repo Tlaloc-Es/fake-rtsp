@@ -5,7 +5,8 @@
 # Log level: info | warn | error
 logLevel: warn
 
-# RTSP server settings
+# RTSP server settings.
+# rtspAddress is overridden at runtime by MTX_RTSPADDRESS when RTSP_PORT is set.
 rtsp: yes
 rtspAddress: :8554
 
