@@ -1,3 +1,10 @@
+# The generated test pattern burns a clock in with drawtext, which needs a real
+# TTF file, and the base image ships no fonts at all. font-dejavu is 9.8 MB for
+# ~30 faces and we use exactly one, so take the single file and drop the rest.
+FROM bluenviron/mediamtx:latest-ffmpeg AS fonts
+# hadolint ignore=DL3018
+RUN apk add --no-cache font-dejavu
+
 FROM bluenviron/mediamtx:latest-ffmpeg
 
 LABEL org.opencontainers.image.title="fake-rtsp" \
@@ -6,11 +13,12 @@ LABEL org.opencontainers.image.title="fake-rtsp" \
       org.opencontainers.image.documentation="https://github.com/Tlaloc-Es/fake-rtsp#readme" \
       org.opencontainers.image.licenses="MIT"
 
-# bash: the entrypoint needs [[ ]], /dev/tcp and `wait -n`.
-# font-dejavu: the generated test pattern burns a clock in with drawtext.
+# The entrypoint needs bash for [[ ]], /dev/tcp and `wait -n`.
 # Not version-pinned on purpose: the pin would break every base image refresh.
 # hadolint ignore=DL3018
-RUN apk add --no-cache bash font-dejavu
+RUN apk add --no-cache bash
+
+COPY --from=fonts /usr/share/fonts/dejavu/DejaVuSansMono.ttf /usr/share/fonts/dejavu/DejaVuSansMono.ttf
 
 ENV VIDEO_PATH=/videos/video.mp4 \
     STREAM_NAME=stream \
