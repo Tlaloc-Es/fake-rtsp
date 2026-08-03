@@ -6,14 +6,18 @@ LABEL org.opencontainers.image.title="fake-rtsp" \
       org.opencontainers.image.documentation="https://github.com/Tlaloc-Es/fake-rtsp#readme" \
       org.opencontainers.image.licenses="MIT"
 
-# The entrypoint needs bash for [[ ]], /dev/tcp and `wait -n`.
+# bash: the entrypoint needs [[ ]], /dev/tcp and `wait -n`.
+# font-dejavu: the generated test pattern burns a clock in with drawtext.
 # Not version-pinned on purpose: the pin would break every base image refresh.
 # hadolint ignore=DL3018
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash font-dejavu
 
 ENV VIDEO_PATH=/videos/video.mp4 \
     STREAM_NAME=stream \
-    RTSP_PORT=8554
+    RTSP_PORT=8554 \
+    TEST_PATTERN=auto \
+    TEST_PATTERN_SIZE=1280x720 \
+    TEST_PATTERN_FPS=25
 
 EXPOSE 8554
 

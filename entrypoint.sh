@@ -1,15 +1,41 @@
 #!/bin/bash
 set -euo pipefail
 
-VIDEO_PATH="${VIDEO_PATH:-/videos/video.mp4}"
+# The value baked into the Dockerfile. Used to tell "the user did not pick a
+# video" apart from "the user picked a video and it is missing".
+readonly DEFAULT_VIDEO_PATH="/videos/video.mp4"
+readonly FONT="/usr/share/fonts/dejavu/DejaVuSansMono.ttf"
+
+VIDEO_PATH="${VIDEO_PATH:-$DEFAULT_VIDEO_PATH}"
 STREAM_NAME="${STREAM_NAME:-stream}"
 RTSP_PORT="${RTSP_PORT:-8554}"
+TEST_PATTERN="${TEST_PATTERN:-auto}"
+TEST_PATTERN_SIZE="${TEST_PATTERN_SIZE:-1280x720}"
+TEST_PATTERN_FPS="${TEST_PATTERN_FPS:-25}"
 
-# Validate video file exists
-if [[ ! -f "$VIDEO_PATH" ]]; then
-  echo "[fake-rtsp] ERROR: Video file not found: $VIDEO_PATH" >&2
-  echo "[fake-rtsp] Mount a video file and set VIDEO_PATH accordingly." >&2
-  exit 1
+case "$TEST_PATTERN" in
+  auto | always | never) ;;
+  *)
+    echo "[fake-rtsp] ERROR: TEST_PATTERN must be auto, always or never (got: ${TEST_PATTERN})" >&2
+    exit 1
+    ;;
+esac
+
+# Decide between re-streaming a file and generating a synthetic pattern
+USE_TEST_PATTERN=false
+if [[ "$TEST_PATTERN" == "always" ]]; then
+  USE_TEST_PATTERN=true
+elif [[ ! -f "$VIDEO_PATH" ]]; then
+  if [[ "$TEST_PATTERN" == "auto" && "$VIDEO_PATH" == "$DEFAULT_VIDEO_PATH" ]]; then
+    # Nothing was mounted and no video was requested: stream a test pattern so
+    # the container is useful with no arguments at all.
+    USE_TEST_PATTERN=true
+  else
+    echo "[fake-rtsp] ERROR: Video file not found: $VIDEO_PATH" >&2
+    echo "[fake-rtsp] Mount a video file and set VIDEO_PATH accordingly," >&2
+    echo "[fake-rtsp] or set TEST_PATTERN=always to stream a generated pattern instead." >&2
+    exit 1
+  fi
 fi
 
 echo "[fake-rtsp] Starting mediamtx on port ${RTSP_PORT}..."
@@ -42,18 +68,39 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 
-echo "[fake-rtsp] Streaming '${VIDEO_PATH}' → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
+RTSP_URL="rtsp://127.0.0.1:${RTSP_PORT}/${STREAM_NAME}"
 
-# Loop the video indefinitely and push it to mediamtx via RTSP.
-# -c copy passes the original codec through: no re-encode, no quality loss.
-ffmpeg \
-  -loglevel warning \
-  -re \
-  -stream_loop -1 \
-  -i "$VIDEO_PATH" \
-  -c copy \
-  -f rtsp \
-  "rtsp://127.0.0.1:${RTSP_PORT}/${STREAM_NAME}" &
+if [[ "$USE_TEST_PATTERN" == true ]]; then
+  echo "[fake-rtsp] Streaming a generated ${TEST_PATTERN_SIZE}@${TEST_PATTERN_FPS}fps test pattern"
+  echo "[fake-rtsp] → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
+
+  # A burnt-in clock makes the stream obviously live and lets you eyeball latency
+  OVERLAY="drawtext=fontfile=${FONT}:text='fake-rtsp %{localtime\\:%X}'"
+  OVERLAY+=":x=32:y=32:fontsize=44:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=12"
+
+  ffmpeg \
+    -loglevel warning \
+    -re \
+    -f lavfi -i "testsrc2=size=${TEST_PATTERN_SIZE}:rate=${TEST_PATTERN_FPS}" \
+    -vf "$OVERLAY" \
+    -c:v libx264 -preset veryfast -tune zerolatency \
+    -pix_fmt yuv420p -g "$(( TEST_PATTERN_FPS * 2 ))" \
+    -f rtsp \
+    "$RTSP_URL" &
+else
+  echo "[fake-rtsp] Streaming '${VIDEO_PATH}' → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
+
+  # Loop the video indefinitely and push it to mediamtx via RTSP.
+  # -c copy passes the original codec through: no re-encode, no quality loss.
+  ffmpeg \
+    -loglevel warning \
+    -re \
+    -stream_loop -1 \
+    -i "$VIDEO_PATH" \
+    -c copy \
+    -f rtsp \
+    "$RTSP_URL" &
+fi
 FFMPEG_PID=$!
 
 # Exit as soon as either process dies, so the container restart policy can react
