@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck entrypoint.sh
+        run: shellcheck entrypoint.sh
+
+      - name: Hadolint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+  smoke:
+    name: Build and stream smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: fake-rtsp:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Stream smoke test
+        run: ./scripts/smoke-test.sh fake-rtsp:ci
