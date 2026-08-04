@@ -12,6 +12,8 @@ RTSP_PORT="${RTSP_PORT:-8554}"
 TEST_PATTERN="${TEST_PATTERN:-auto}"
 TEST_PATTERN_SIZE="${TEST_PATTERN_SIZE:-1280x720}"
 TEST_PATTERN_FPS="${TEST_PATTERN_FPS:-25}"
+FAULT_DROP_EVERY="${FAULT_DROP_EVERY:-}"
+FAULT_DROP_FOR="${FAULT_DROP_FOR:-}"
 
 case "$TEST_PATTERN" in
   auto | always | never) ;;
@@ -20,6 +22,21 @@ case "$TEST_PATTERN" in
     exit 1
     ;;
 esac
+
+if [[ -n "$FAULT_DROP_EVERY" || -n "$FAULT_DROP_FOR" ]]; then
+  if [[ -z "$FAULT_DROP_EVERY" || -z "$FAULT_DROP_FOR" ]]; then
+    echo "[fake-rtsp] ERROR: FAULT_DROP_EVERY and FAULT_DROP_FOR must be set together" >&2
+    exit 1
+  fi
+  if [[ ! "$FAULT_DROP_EVERY" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[fake-rtsp] ERROR: FAULT_DROP_EVERY must be a positive integer (got: ${FAULT_DROP_EVERY})" >&2
+    exit 1
+  fi
+  if [[ ! "$FAULT_DROP_FOR" =~ ^[1-9][0-9]*$ ]]; then
+    echo "[fake-rtsp] ERROR: FAULT_DROP_FOR must be a positive integer (got: ${FAULT_DROP_FOR})" >&2
+    exit 1
+  fi
+fi
 
 # Decide between re-streaming a file and generating a synthetic pattern
 USE_TEST_PATTERN=false
@@ -47,6 +64,7 @@ export MTX_RTSPADDRESS=":${RTSP_PORT}"
 /mediamtx /mediamtx.yml &
 MEDIAMTX_PID=$!
 FFMPEG_PID=""
+TIMER_PID=""
 
 # Clean shutdown on SIGTERM/SIGINT
 # shellcheck disable=SC2317,SC2329  # invoked through trap
@@ -54,6 +72,9 @@ cleanup() {
   echo "[fake-rtsp] Shutting down..."
   if [[ -n "$FFMPEG_PID" ]]; then
     kill "$FFMPEG_PID" 2>/dev/null || true
+  fi
+  if [[ -n "$TIMER_PID" ]]; then
+    kill "$TIMER_PID" 2>/dev/null || true
   fi
   kill "$MEDIAMTX_PID" 2>/dev/null || true
   exit 0
@@ -70,43 +91,94 @@ done
 
 RTSP_URL="rtsp://127.0.0.1:${RTSP_PORT}/${STREAM_NAME}"
 
-if [[ "$USE_TEST_PATTERN" == true ]]; then
-  echo "[fake-rtsp] Streaming a generated ${TEST_PATTERN_SIZE}@${TEST_PATTERN_FPS}fps test pattern"
-  echo "[fake-rtsp] → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
+start_ffmpeg() {
+  if [[ "$USE_TEST_PATTERN" == true ]]; then
+    echo "[fake-rtsp] Streaming a generated ${TEST_PATTERN_SIZE}@${TEST_PATTERN_FPS}fps test pattern"
+    echo "[fake-rtsp] → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
 
-  # A burnt-in clock makes the stream obviously live and lets you eyeball latency
-  OVERLAY="drawtext=fontfile=${FONT}:text='fake-rtsp %{localtime\\:%X}'"
-  OVERLAY+=":x=32:y=32:fontsize=44:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=12"
+    # A burnt-in clock makes the stream obviously live and lets you eyeball latency
+    local overlay="drawtext=fontfile=${FONT}:text='fake-rtsp %{localtime\\:%X}'"
+    overlay+=":x=32:y=32:fontsize=44:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=12"
 
-  ffmpeg \
-    -loglevel warning \
-    -re \
-    -f lavfi -i "testsrc2=size=${TEST_PATTERN_SIZE}:rate=${TEST_PATTERN_FPS}" \
-    -vf "$OVERLAY" \
-    -c:v libx264 -preset veryfast -tune zerolatency \
-    -pix_fmt yuv420p -g "$(( TEST_PATTERN_FPS * 2 ))" \
-    -f rtsp \
-    "$RTSP_URL" &
-else
-  echo "[fake-rtsp] Streaming '${VIDEO_PATH}' → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
+    ffmpeg \
+      -loglevel warning \
+      -re \
+      -f lavfi -i "testsrc2=size=${TEST_PATTERN_SIZE}:rate=${TEST_PATTERN_FPS}" \
+      -vf "$overlay" \
+      -c:v libx264 -preset veryfast -tune zerolatency \
+      -pix_fmt yuv420p -g "$(( TEST_PATTERN_FPS * 2 ))" \
+      -f rtsp \
+      "$RTSP_URL" &
+  else
+    echo "[fake-rtsp] Streaming '${VIDEO_PATH}' → rtsp://0.0.0.0:${RTSP_PORT}/${STREAM_NAME}"
 
-  # Loop the video indefinitely and push it to mediamtx via RTSP.
-  # -c copy passes the original codec through: no re-encode, no quality loss.
-  ffmpeg \
-    -loglevel warning \
-    -re \
-    -stream_loop -1 \
-    -i "$VIDEO_PATH" \
-    -c copy \
-    -f rtsp \
-    "$RTSP_URL" &
+    # Loop the video indefinitely and push it to mediamtx via RTSP.
+    # -c copy passes the original codec through: no re-encode, no quality loss.
+    ffmpeg \
+      -loglevel warning \
+      -re \
+      -stream_loop -1 \
+      -i "$VIDEO_PATH" \
+      -c copy \
+      -f rtsp \
+      "$RTSP_URL" &
+  fi
+  FFMPEG_PID=$!
+}
+
+start_ffmpeg
+
+if [[ -z "$FAULT_DROP_EVERY" ]]; then
+  # Exit as soon as either process dies, so the container restart policy can react.
+  set +e
+  wait -n "$MEDIAMTX_PID" "$FFMPEG_PID"
+  STATUS=$?
+  echo "[fake-rtsp] A process exited with status ${STATUS}, stopping the container..."
+  kill "$FFMPEG_PID" "$MEDIAMTX_PID" 2>/dev/null
+  exit "$STATUS"
 fi
-FFMPEG_PID=$!
 
-# Exit as soon as either process dies, so the container restart policy can react
-set +e
-wait -n "$MEDIAMTX_PID" "$FFMPEG_PID"
-STATUS=$?
-echo "[fake-rtsp] A process exited with status ${STATUS}, stopping the container..."
-kill "$FFMPEG_PID" "$MEDIAMTX_PID" 2>/dev/null
-exit "$STATUS"
+echo "[fake-rtsp] Fault injection: drop every ${FAULT_DROP_EVERY}s for ${FAULT_DROP_FOR}s"
+
+# A fixed healthy/drop cycle is deterministic by construction. The timer is a
+# third supervised process: if mediamtx or ffmpeg exits before it, the container
+# still fails exactly as it did before fault injection was enabled.
+while true; do
+  sleep "$FAULT_DROP_EVERY" &
+  TIMER_PID=$!
+  FINISHED_PID=""
+  set +e
+  wait -n -p FINISHED_PID "$MEDIAMTX_PID" "$FFMPEG_PID" "$TIMER_PID"
+  STATUS=$?
+  set -e
+
+  if [[ "$FINISHED_PID" != "$TIMER_PID" ]]; then
+    kill "$TIMER_PID" "$FFMPEG_PID" "$MEDIAMTX_PID" 2>/dev/null || true
+    echo "[fake-rtsp] A supervised process exited with status ${STATUS}, stopping the container..."
+    exit "$STATUS"
+  fi
+
+  TIMER_PID=""
+  echo "[fake-rtsp] Injecting stream drop for ${FAULT_DROP_FOR}s"
+  kill "$FFMPEG_PID" 2>/dev/null || true
+  wait "$FFMPEG_PID" 2>/dev/null || true
+  FFMPEG_PID=""
+
+  sleep "$FAULT_DROP_FOR" &
+  TIMER_PID=$!
+  FINISHED_PID=""
+  set +e
+  wait -n -p FINISHED_PID "$MEDIAMTX_PID" "$TIMER_PID"
+  STATUS=$?
+  set -e
+
+  if [[ "$FINISHED_PID" != "$TIMER_PID" ]]; then
+    kill "$TIMER_PID" "$MEDIAMTX_PID" 2>/dev/null || true
+    echo "[fake-rtsp] mediamtx exited with status ${STATUS}, stopping the container..."
+    exit "$STATUS"
+  fi
+
+  TIMER_PID=""
+  echo "[fake-rtsp] Recovering stream after injected drop"
+  start_ffmpeg
+done
