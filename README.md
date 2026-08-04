@@ -183,9 +183,27 @@ All options via environment variables — no files to edit.
 | `TEST_PATTERN` | `auto` | `auto` falls back to a generated pattern when nothing is mounted, `always` forces it, `never` fails instead |
 | `TEST_PATTERN_SIZE` | `1280x720` | Resolution of the generated pattern |
 | `TEST_PATTERN_FPS` | `25` | Frame rate of the generated pattern |
+| `FAULT_DROP_EVERY` | unset | Healthy-stream seconds between injected publisher drops; set together with `FAULT_DROP_FOR` |
+| `FAULT_DROP_FOR` | unset | Seconds to keep the publisher offline before restarting it |
 
 Pointing `VIDEO_PATH` at a file that does not exist is always an error — the
 fallback only applies when you did not ask for a specific video.
+
+### Test client reconnection
+
+Fault injection is opt-in. This example serves a healthy stream for 20 seconds,
+drops it for 5 seconds, then restarts the publisher and repeats the same schedule:
+
+```bash
+docker run --rm -p 8554:8554 \
+  -e FAULT_DROP_EVERY=20 \
+  -e FAULT_DROP_FOR=5 \
+  ghcr.io/tlaloc-es/fake-rtsp
+```
+
+With both variables unset, process supervision and stream behavior are unchanged.
+Both values are positive integer seconds and must be supplied together. The fixed
+cycle is deterministic, which makes reconnection failures reproducible in CI.
 
 ---
 
