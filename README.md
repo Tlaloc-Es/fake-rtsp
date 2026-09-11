@@ -205,7 +205,18 @@ fallback only applies when you did not ask for a specific video.
 
 ## Tips & tricks
 
-**Codec compatibility** — use H.264/AAC sources for maximum client compatibility. The container streams whatever codec is in the source file with `-c copy`, so pre-encode if needed.
+**Audio and codec compatibility** — all streams in the source file are copied,
+including audio. H.264 video with AAC audio is covered by the end-to-end smoke
+test and is the safest choice for broad RTSP client compatibility. Other codecs
+are still passed through unchanged, so both mediamtx and the receiving client
+must support them. Pre-encode an incompatible source before mounting it:
+
+```bash
+ffmpeg -i input.mov -c:v libx264 -pix_fmt yuv420p -c:a aac output.mp4
+```
+
+To publish video without a source audio track, remove it beforehand with
+`ffmpeg -i input.mp4 -c:v copy -an video-only.mp4`.
 
 **Health checks** — the image already defines one, so `docker ps` and your orchestrator know when a stream is down. Override it only if you want different timings:
 
