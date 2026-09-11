@@ -10,10 +10,14 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VIDEO="${VIDEO:-videos/parking.mp4}"
 
 CONTAINERS=()
+TEMP_DIRS=()
 
 cleanup() {
   for c in "${CONTAINERS[@]:-}"; do
     [[ -n "$c" ]] && docker rm -f "$c" >/dev/null 2>&1 || true
+  done
+  for d in "${TEMP_DIRS[@]:-}"; do
+    [[ -n "$d" ]] && rm -rf "$d"
   done
 }
 trap cleanup EXIT
@@ -47,7 +51,7 @@ probe() {
   local url="$1"
   docker run --rm --network host --entrypoint ffprobe "$IMAGE" \
     -v error -rtsp_transport tcp -i "$url" \
-    -show_entries stream=codec_name,width,height \
+    -show_entries stream=codec_type,codec_name,width,height \
     -of default=noprint_wrappers=1
 }
 
@@ -110,6 +114,34 @@ docker stop fake-rtsp-smoke-1 >/dev/null
 ELAPSED=$(( $(date +%s) - START ))
 [[ "$ELAPSED" -le 5 ]] || fail "shutdown took ${ELAPSED}s, expected a graceful stop under 5s"
 echo "stopped in ${ELAPSED}s"
+
+echo "==> Case 7: audio and video survive stream copy"
+AUDIO_FIXTURE_DIR="$(mktemp -d)"
+TEMP_DIRS+=("$AUDIO_FIXTURE_DIR")
+docker run --rm --entrypoint ffmpeg \
+  -v "${AUDIO_FIXTURE_DIR}:/fixture" \
+  "$IMAGE" \
+  -v error \
+  -f lavfi -i "testsrc2=size=320x240:rate=25" \
+  -f lavfi -i "sine=frequency=1000:sample_rate=48000" \
+  -t 2 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest \
+  /fixture/audio-video.mp4
+
+docker rm -f fake-rtsp-smoke-7 >/dev/null 2>&1 || true
+CONTAINERS+=("fake-rtsp-smoke-7")
+docker run -d --name fake-rtsp-smoke-7 \
+  -p 8557:8554 \
+  -v "${AUDIO_FIXTURE_DIR}:/videos:ro" \
+  -e VIDEO_PATH=/videos/audio-video.mp4 \
+  -e STREAM_NAME=audio-video \
+  "$IMAGE" >/dev/null
+wait_for_healthy fake-rtsp-smoke-7
+OUT="$(probe rtsp://127.0.0.1:8557/audio-video)"
+echo "$OUT"
+grep -q "codec_type=video" <<<"$OUT" || fail "expected a video stream"
+grep -q "codec_name=h264" <<<"$OUT" || fail "expected h264 video to pass through"
+grep -q "codec_type=audio" <<<"$OUT" || fail "expected an audio stream"
+grep -q "codec_name=aac" <<<"$OUT" || fail "expected AAC audio to pass through"
 
 echo
 echo "All smoke tests passed for $IMAGE"
