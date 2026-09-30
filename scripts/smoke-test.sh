@@ -51,6 +51,15 @@ probe() {
     -of default=noprint_wrappers=1
 }
 
+# Fast success/failure probe used while a fault window is active. A one-second
+# I/O timeout keeps the expected outage from stalling the smoke test.
+probe_quick() {
+  local url="$1"
+  docker run --rm --network host --entrypoint ffprobe "$IMAGE" \
+    -v error -rw_timeout 1000000 -rtsp_transport tcp -i "$url" \
+    -show_entries stream=codec_name -of csv=p=0 >/dev/null 2>&1
+}
+
 echo "==> Case 1: default port and stream name"
 docker rm -f fake-rtsp-smoke-1 >/dev/null 2>&1 || true
 CONTAINERS+=("fake-rtsp-smoke-1")
@@ -110,6 +119,49 @@ docker stop fake-rtsp-smoke-1 >/dev/null
 ELAPSED=$(( $(date +%s) - START ))
 [[ "$ELAPSED" -le 5 ]] || fail "shutdown took ${ELAPSED}s, expected a graceful stop under 5s"
 echo "stopped in ${ELAPSED}s"
+
+echo "==> Case 7: scheduled publisher drop is observable and recovers"
+docker rm -f fake-rtsp-smoke-7 >/dev/null 2>&1 || true
+CONTAINERS+=("fake-rtsp-smoke-7")
+docker run -d --name fake-rtsp-smoke-7 \
+  -p 8557:8554 \
+  -e TEST_PATTERN=always \
+  -e FAULT_DROP_EVERY=4 \
+  -e FAULT_DROP_FOR=2 \
+  "$IMAGE" >/dev/null
+
+SEEN_HEALTHY=false
+for _ in $(seq 1 8); do
+  if probe_quick rtsp://127.0.0.1:8557/stream; then
+    SEEN_HEALTHY=true
+    break
+  fi
+  sleep 1
+done
+[[ "$SEEN_HEALTHY" == true ]] || fail "fault-injection stream never became readable"
+
+SEEN_GAP=false
+for _ in $(seq 1 8); do
+  if ! probe_quick rtsp://127.0.0.1:8557/stream; then
+    SEEN_GAP=true
+    break
+  fi
+  sleep 1
+done
+[[ "$SEEN_GAP" == true ]] || fail "client did not observe the configured stream gap"
+
+SEEN_RECOVERY=false
+for _ in $(seq 1 8); do
+  if probe_quick rtsp://127.0.0.1:8557/stream; then
+    SEEN_RECOVERY=true
+    break
+  fi
+  sleep 1
+done
+[[ "$SEEN_RECOVERY" == true ]] || fail "stream did not recover after the configured gap"
+
+docker logs fake-rtsp-smoke-7 2>&1 | grep -q "Recovering stream after injected drop" \
+  || fail "fault supervisor did not log a deterministic recovery"
 
 echo
 echo "All smoke tests passed for $IMAGE"
